@@ -1127,27 +1127,6 @@ let linked_page_text conf base p s key (str : Adef.safe_string) (pg, (_, il)) :
     ->
       str
 
-let links_to_ind conf base db key =
-  let l =
-    List.fold_left
-      (fun pgl (pg, (_, il)) ->
-        let record_it =
-          match pg with
-          | Def.NLDB.PgInd ip -> authorized_age conf base (pget conf base ip)
-          | Def.NLDB.PgFam ifam ->
-              authorized_age conf base
-                (pget conf base (get_father @@ foi base ifam))
-          | Def.NLDB.PgNotes | Def.NLDB.PgMisc _ | Def.NLDB.PgWizard _ -> true
-        in
-        if record_it then
-          List.fold_left
-            (fun pgl (k, _) -> if k = key then pg :: pgl else pgl)
-            pgl il
-        else pgl)
-      [] db
-  in
-  List.sort_uniq compare l
-
 (* Interpretation of template file *)
 
 let rec compare_ls sl1 sl2 =
@@ -1472,11 +1451,11 @@ and eval_simple_bool_var conf base env =
       | _ -> raise Not_found)
   | "has_relation_her" -> (
       match get_env "rel" env with
-      | Vrel ({ r_moth = Some _ }, None) -> true
+      | Vrel ({ r_moth = Some _; _ }, None) -> true
       | _ -> false)
   | "has_relation_him" -> (
       match get_env "rel" env with
-      | Vrel ({ r_fath = Some _ }, None) -> true
+      | Vrel ({ r_fath = Some _; _ }, None) -> true
       | _ -> false)
   | "has_witnesses" -> (
       match get_env "fam" env with
@@ -2322,19 +2301,19 @@ and eval_compound_var conf base env ((a, _) as ep) loc = function
       | None -> raise Not_found)
   | "related" :: sl -> (
       match get_env "rel" env with
-      | Vrel ({ r_type = rt }, Some p) ->
+      | Vrel ({ r_type = rt; _ }, Some p) ->
           eval_relation_field_var conf base env
             (index_of_sex (get_sex p), rt, get_iper p, false)
             loc sl
       | _ -> raise Not_found)
   | "relation_her" :: sl -> (
       match get_env "rel" env with
-      | Vrel ({ r_moth = Some ip; r_type = rt }, None) ->
+      | Vrel ({ r_moth = Some ip; r_type = rt; _ }, None) ->
           eval_relation_field_var conf base env (1, rt, ip, true) loc sl
       | _ -> raise Not_found)
   | "relation_him" :: sl -> (
       match get_env "rel" env with
-      | Vrel ({ r_fath = Some ip; r_type = rt }, None) ->
+      | Vrel ({ r_fath = Some ip; r_type = rt; _ }, None) ->
           eval_relation_field_var conf base env (0, rt, ip, true) loc sl
       | _ -> raise Not_found)
   | "self" :: sl -> eval_person_field_var conf base env ep loc sl
@@ -2890,10 +2869,20 @@ and eval_person_field_var conf base env ((p, p_auth) as ep) loc = function
           in
           VVbool r
       | _ -> raise Not_found)
+  (* TODO exclude TYPE gallery and album ?? *)
+  (* TODO fold link_to_ind and Notes.link_to_ind !! *)
   | [ "has_linked_pages" ] -> (
       match get_env "nldb" env with
-      | Vnldb _db -> VVbool (Notes.has_linked_pages conf base (get_iper p))
+      | Vnldb db ->
+          let key =
+            let fn = Name.lower (sou base (get_first_name p)) in
+            let sn = Name.lower (sou base (get_surname p)) in
+            (fn, sn, get_occ p)
+          in
+          VVbool (Notes.links_to_ind conf base db key None <> [])
       | _ -> raise Not_found)
+  | [ "has_linked_pages_2" ] ->
+      VVbool (Notes.linked_pages_nbr conf base (get_iper p) > 0)
   | [ "linked_pages_nbr" ] -> (
       match get_env "nldb" env with
       | Vnldb db ->
@@ -2904,11 +2893,29 @@ and eval_person_field_var conf base env ((p, p_auth) as ep) loc = function
                 let sn = Name.lower (sou base (get_surname p)) in
                 (fn, sn, get_occ p)
               in
-              string_of_int (List.length (links_to_ind conf base db key))
+              string_of_int
+                (List.length (Notes.links_to_ind conf base db key None))
             else "0"
           in
           str_val r
       | _ -> str_val "0")
+  | [ "linked_pages_nbr_2" ] ->
+      VVstring (string_of_int (Notes.linked_pages_nbr conf base (get_iper p)))
+  | [ "nb_linked_pages_type"; s ] -> (
+      match get_env "nldb" env with
+      | Vnldb db ->
+          let n =
+            if p_auth then
+              let key =
+                let fn = Name.lower (sou base (get_first_name p)) in
+                let sn = Name.lower (sou base (get_surname p)) in
+                (fn, sn, get_occ p)
+              in
+              List.length (Notes.links_to_ind conf base db key (Some s))
+            else 0
+          in
+          VVstring (string_of_int n)
+      | _ -> raise Not_found)
   | [ "has_sosa" ] -> (
       match get_env "p_link" env with
       | Vbool _ -> VVbool false
@@ -2931,12 +2938,6 @@ and eval_person_field_var conf base env ((p, p_auth) as ep) loc = function
       match get_env "lev_cnt" env with
       | Vint i -> str_val (string_of_int i)
       | _ -> raise Not_found)
-  | [ "linked_pages_number" ] -> (
-      match get_env "nldb" env with
-      | Vnldb _db ->
-          Notes.linked_pages_nbr conf base (get_iper p)
-          |> string_of_int |> str_val
-      | _ -> str_val "0")
   | [ "linked_page"; s ] -> (
       match get_env "nldb" env with
       | Vnldb db ->
@@ -3163,8 +3164,8 @@ and eval_str_event_field conf base (p, p_auth)
           | x -> (x, false)
         in
         match (birth_date, Date.cdate_to_dmy_opt date) with
-        | ( Some ({ prec = Sure | About | Maybe } as d1),
-            Some ({ prec = Sure | About | Maybe } as d2) )
+        | ( Some ({ prec = Sure | About | Maybe; _ } as d1),
+            Some ({ prec = Sure | About | Maybe; _ } as d2) )
           when d1 <> d2 ->
             let a = Date.time_elapsed d1 d2 in
             let s =
@@ -3279,8 +3280,8 @@ and eval_bool_person_field conf base env (p, p_auth) = function
   | "computable_death_age" ->
       if p_auth then
         match Gutil.get_birth_death_date p with
-        | ( Some (Dgreg (({ prec = Sure | About | Maybe } as d1), _)),
-            Some (Dgreg (({ prec = Sure | About | Maybe } as d2), _)),
+        | ( Some (Dgreg (({ prec = Sure | About | Maybe; _ } as d1), _)),
+            Some (Dgreg (({ prec = Sure | About | Maybe; _ } as d2), _)),
             _ )
           when d1 <> d2 ->
             let a = Date.time_elapsed d1 d2 in
@@ -3296,8 +3297,8 @@ and eval_bool_person_field conf base env (p, p_auth) = function
               ( Date.cdate_to_dmy_opt (get_birth p),
                 Date.cdate_to_dmy_opt (get_marriage fam) )
             with
-            | ( Some ({ prec = Sure | About | Maybe } as d1),
-                Some ({ prec = Sure | About | Maybe } as d2) ) ->
+            | ( Some ({ prec = Sure | About | Maybe; _ } as d1),
+                Some ({ prec = Sure | About | Maybe; _ } as d2) ) ->
                 let a = Date.time_elapsed d1 d2 in
                 a.year > 0
                 || (a.year = 0 && (a.month > 0 || (a.month = 0 && a.day > 0)))
@@ -3664,8 +3665,8 @@ and eval_str_person_field conf base env ((p, p_auth) as ep) = function
   | "death_age" ->
       if p_auth then
         match Gutil.get_birth_death_date p with
-        | ( Some (Dgreg (({ prec = Sure | About | Maybe } as d1), _)),
-            Some (Dgreg (({ prec = Sure | About | Maybe } as d2), _)),
+        | ( Some (Dgreg (({ prec = Sure | About | Maybe; _ } as d1), _)),
+            Some (Dgreg (({ prec = Sure | About | Maybe; _ } as d2), _)),
             approx )
           when d1 <> d2 ->
             let a = Date.time_elapsed d1 d2 in
@@ -3797,8 +3798,8 @@ and eval_str_person_field conf base env ((p, p_auth) as ep) = function
               ( Date.cdate_to_dmy_opt (get_birth p),
                 Date.cdate_to_dmy_opt (get_marriage fam) )
             with
-            | ( Some ({ prec = Sure | About | Maybe } as d1),
-                Some ({ prec = Sure | About | Maybe } as d2) ) ->
+            | ( Some ({ prec = Sure | About | Maybe; _ } as d1),
+                Some ({ prec = Sure | About | Maybe; _ } as d2) ) ->
                 Date.time_elapsed d1 d2
                 |> DateDisplay.string_of_age conf
                 |> safe_val
@@ -5557,10 +5558,15 @@ let print_what_links conf base p =
     in
     let db = Gwdb.read_nldb base in
     let db = Notes.merge_possible_aliases conf db in
-    let pgl = links_to_ind conf base db key in
+    let pgl = Notes.links_to_ind conf base db key None in
     let title h =
-      transl conf "linked pages" |> Utf8.capitalize_fst
-      |> Output.print_sstring conf;
+      let lnkd_typ =
+        match p_getenv conf.env "type" with
+        | Some "gallery" -> "linked images"
+        | Some "album" -> "linked images"
+        | _ -> "linked pages"
+      in
+      transl conf lnkd_typ |> Utf8.capitalize_fst |> Output.print_sstring conf;
       Util.transl conf ":" |> Output.print_sstring conf;
       Output.print_sstring conf " ";
       if h then Output.print_string conf (simple_person_text conf base p true)

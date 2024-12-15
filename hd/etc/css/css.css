@@ -66,9 +66,19 @@
   word-wrap: break-word;
 }
 
+/* Toolbar and characters panel */
 /* Light grey background color highlight for the toolbar characters.txt */
 .ch .hl {
     background-color: #ffe2e2;
+}
+
+.ch a.hl:hover {
+  background: #ffe69c;
+}
+
+.ch a:hover {
+  background: #e9ecef;
+  transform: scale(1.1);
 }
 
 .dropdown-menu-transl {
@@ -513,6 +523,24 @@ Unicode Ranges: 0030-0039,0061-007A,00A0,2500-2503,250A,2514,2517,251C,2523,252C
   margin-bottom: 5rem;
 }
 
+/* Clear button */
+.clear-button-wrapper {
+    position: relative;
+    display: inline-block;
+    width: 100%;
+}
+
+.clear-button-icon {
+    opacity: 0;
+    pointer-events: none;
+}
+input:focus, select:focus {
+    z-index: 1;
+}
+.clear-button-wrapper:hover .clear-button-icon {
+    pointer-events: auto;
+}
+
 /* Fix navigation buttons to top right corner */
 .fix_top {
   position: fixed;
@@ -522,6 +550,10 @@ Unicode Ranges: 0030-0039,0061-007A,00A0,2500-2503,250A,2514,2517,251C,2523,252C
 
 .fix_left {
   left:4px;
+}
+
+.home-xs {
+  z-index: 1031;
 }
 
 @media (max-width: 575px) {
@@ -561,6 +593,7 @@ div.anchor_upd {
     position: relative;
     width: 90%;
   }
+
   #searchmodal .modal-dialog {
     max-width: 90%;
   }
@@ -1067,12 +1100,6 @@ li.desc
 
 
 /* --------------------------------- wiki -------------------------------- */
-
-#summary
-{
-  border: ridge 3px #844404;
-}
-
 div.summary ul
 {
   padding-left: 0;
@@ -1632,6 +1659,53 @@ span.notesourcecolor {
 .popover{
     word-wrap: break-word;
     max-width: 40%;
+}
+
+.d-flex.flex-wrap {
+  gap: 1rem;
+}
+
+.imap-gallery {
+  width: 250px;
+  margin-bottom: 1rem;
+  background: white;
+  border-radius: .25rem;
+  box-shadow: 0 2px 4px rgba(0, 0, 0, 0.1);
+}
+
+.imap-gallery a {
+  display: block;
+}
+
+.imap-gallery img {
+  width: 250px;
+  height: 200px;
+  object-fit: cover;
+  border-radius: .25rem .25rem 0 0;
+}
+
+.imap-gallery a + :last-child {
+  padding: .75rem;
+  color: #212529;
+  font-size: .875rem;
+  text-align: center;
+  border-top: 1px solid #dee2e6;
+}
+
+.in { 
+  background-color: coral;
+}
+
+.list_comma li {
+  display: inline;
+}
+
+.list_comma li:not(:last-child):after { 
+  content: ", ";
+}
+
+.list_comma li:last-child:after {
+  content: ".";
 }
 
 /* surname by branch m=N */

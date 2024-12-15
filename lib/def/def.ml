@@ -92,7 +92,7 @@ type death =
 type burial = UnknownBurial | Buried of cdate | Cremated of cdate
 
 (** Rights for access to the personal data *)
-type access = IfTitles | Public | Private
+type access = IfTitles | Public | SemiPublic | Private
 
 (** Title name *)
 type 'string gen_title_name = Tmain | Tname of 'string | Tnone
@@ -456,6 +456,9 @@ module NLDB = struct
   type key = string * string * int
   type ind = { lnTxt : string option; lnPos : int }
   type ('a, 'b) t = (('a, 'b) page * (string list * (key * ind) list)) list
+
+  let equal_key (fn1, sn1, oc1) (fn2, sn2, oc2) =
+    oc1 = oc2 && String.equal fn1 fn2 && String.equal sn1 sn2
 end
 
 let ( ^^^ ) = Adef.( ^^^ )
