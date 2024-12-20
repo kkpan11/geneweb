@@ -574,6 +574,7 @@ let reconstitute_person conf =
   let access =
     match p_getenv conf.env "access" with
     | Some "Public" -> Public
+    | Some "SemiPublic" -> SemiPublic
     | Some "Private" -> Private
     | Some _ | None -> IfTitles
   in
@@ -808,7 +809,10 @@ let effective_mod ?prerr ?skip_conflict conf base sp =
   let ofn = p_first_name base op in
   let osn = p_surname base op in
   let oocc = get_occ op in
-  (if ofn <> sp.first_name || osn <> sp.surname || oocc <> sp.occ then
+  (if
+   (not (String.equal ofn sp.first_name && String.equal osn sp.surname))
+   || oocc <> sp.occ
+  then
    match Gwdb.person_of_key base sp.first_name sp.surname sp.occ with
    | Some p' when p' <> pi && Some p' <> skip_conflict ->
        Update.print_create_conflict conf base (poi base p') ""
@@ -933,7 +937,7 @@ let effective_del_commit conf base op =
   let key =
     Util.make_key base (Gwdb.gen_person_of_person (poi base op.key_index))
   in
-  Notes.update_cache_linked_pages conf Notes.Delete key key [];
+  Notes.update_cache_linked_pages conf Notes.Delete key key 0;
   Util.commit_patches conf base;
   let changed = U_Delete_person op in
   History.record conf base changed "dp"
@@ -987,10 +991,13 @@ let print_mod_ok conf base wl pgl p ofn osn oocc =
   let nfn = p_first_name base np in
   let nsn = p_surname base np in
   let nocc = get_occ np in
-  if pgl <> [] && (ofn <> nfn || osn <> nsn || oocc <> nocc) then (
+  if
+    pgl <> []
+    && ((not (String.equal ofn nfn && String.equal osn nsn)) || oocc <> nocc)
+  then (
     Output.print_sstring conf
       {|<div class="alert alert-danger mx-auto mt-1" role="alert">|};
-    Output.print_sstring conf (transl conf "name changed. update linked pages");
+    Output.print_sstring conf (transl conf "name changed. updated linked pages");
     Output.print_sstring conf "</div>\n";
     let soocc = if oocc <> 0 then Printf.sprintf "/%d" oocc else "" in
     let snocc = if nocc <> 0 then Printf.sprintf "/%d" nocc else "" in
@@ -1148,43 +1155,19 @@ let print_mod ?prerr o_conf base =
   let pgl =
     let db = Gwdb.read_nldb base in
     let db = Notes.merge_possible_aliases conf db in
-    Perso.links_to_ind conf base db old_key
+    Notes.links_to_ind conf base db old_key None
   in
   let callback sp =
     let p = effective_mod ?prerr conf base sp in
     let op = poi base p.key_index in
     let u = { family = get_family op } in
     patch_person base p.key_index p;
-    let s =
-      let sl =
-        [
-          p.notes;
-          p.occupation;
-          p.birth_note;
-          p.birth_src;
-          p.baptism_note;
-          p.baptism_src;
-          p.death_note;
-          p.death_src;
-          p.burial_note;
-          p.burial_src;
-          p.psources;
-        ]
-      in
-      let sl =
-        let rec loop l accu =
-          match l with
-          | [] -> accu
-          | evt :: l -> loop l (evt.epers_note :: evt.epers_src :: accu)
-        in
-        loop p.pevents sl
-      in
-      String.concat " " (List.map (sou base) sl)
-    in
-    Notes.update_notes_links_db base (Def.NLDB.PgInd p.key_index) s;
     let new_key = Util.make_key base p in
-    if old_key <> new_key then
-      Notes.update_cache_linked_pages conf Notes.Rename old_key new_key [];
+    if old_key <> new_key then (
+      (* Needs the updates in this order in case of self-reference *)
+      Notes.update_notes_links_person base p;
+      Notes.update_ind_key conf base pgl old_key new_key;
+      Notes.update_cache_linked_pages conf Notes.Rename old_key new_key 0);
     let wl =
       let a = poi base p.key_index in
       let a = { parents = get_parents a; consang = get_consang a } in

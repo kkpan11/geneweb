@@ -1766,8 +1766,8 @@ let add_indi gen r =
   in
   let sex =
     match find_field "SEX" r.rsons with
-      Some {rval = "M"} -> Male
-    | Some {rval = "F"} -> Female
+      Some {rval = "M"; _} -> Male
+    | Some {rval = "F"; _} -> Female
     | _ -> Neuter
   in
   let image =
@@ -3078,13 +3078,13 @@ let check_parents_sex persons families couples strings =
   done
 
 let neg_year_dmy = function
-  | {day = d; month = m; year = y; prec = OrYear dmy2} ->
+  | {day = d; month = m; year = y; prec = OrYear dmy2; _} ->
     let dmy2 = {dmy2 with year2 = -abs dmy2.year2} in
     {day = d; month = m; year = -abs y; prec = OrYear dmy2; delta = 0}
-  | {day = d; month = m; year = y; prec = YearInt dmy2} ->
+  | {day = d; month = m; year = y; prec = YearInt dmy2; _} ->
     let dmy2 = {dmy2 with year2 = -abs dmy2.year2} in
     {day = d; month = m; year = -abs y; prec = YearInt dmy2; delta = 0}
-  | {day = d; month = m; year = y; prec = p} ->
+  | {day = d; month = m; year = y; prec = p; _} ->
     {day = d; month = m; year = -abs y; prec = p; delta = 0}
 
 let neg_year = function
@@ -3291,19 +3291,20 @@ let main () =
   if not (Array.mem "-bd" Sys.argv) then Secure.set_base_dir ".";
   in_file :=
     if !in_file <> "" then
-      Filename.remove_extension (Filename.basename !in_file)
+      Filename.remove_extension !in_file
     else !in_file;
   if !in_file <> "" && (not (Array.mem "-o" Sys.argv)) then out_file := !in_file;
-  if not (Mutil.good_name (Filename.basename !out_file)) then (
+  out_file := Filename.basename !out_file |> Filename.remove_extension;
+  if not (Mutil.good_name !out_file) then (
     (* Util.transl conf not available !*)
     Printf.eprintf "The database name \"%s\" contains a forbidden character.\n"
       !out_file;
     Printf.eprintf "Allowed characters: a..z, A..Z, 0..9, -\n";
     flush stderr;
     exit 2);
-  let bname = Filename.remove_extension (Filename.basename !out_file) in
+  let bname = !out_file in
+  out_file := Filename.concat (!Geneweb.GWPARAM.bpath "") !out_file;
   Geneweb.GWPARAM.init bname;
-  Secure.set_base_dir (Filename.dirname !out_file);
   Geneweb.GWPARAM.test_base bname;
   let arrays = make_arrays !in_file in
   Gc.compact ();

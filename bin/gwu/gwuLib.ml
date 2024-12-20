@@ -341,7 +341,8 @@ let print_infos opts base is_child csrc cbp p =
   (match get_access p with
   | IfTitles -> ()
   | Public -> Printf.ksprintf (oc opts) " #apubl"
-  | Private -> Printf.ksprintf (oc opts) " #apriv");
+  | Private -> Printf.ksprintf (oc opts) " #apriv"
+  | SemiPublic -> Printf.ksprintf (oc opts) " #semipub");
   print_if_no_empty opts base "#occu" (get_occupation p);
   print_src_if_not_equal_to opts csrc base "#src" (get_psources p);
   (match Date.od_of_cdate (get_birth p) with
@@ -1054,9 +1055,10 @@ let get_isolated_related base m list =
     if List.mem_assq p list then list
     else if is_isolated p then
       match get_rparents p with
-      | { r_fath = Some x } :: _ when x = get_iper p_relation ->
+      | { r_fath = Some x; _ } :: _ when x = get_iper p_relation ->
           list @ [ (p, true) ]
-      | { r_fath = None; r_moth = Some x } :: _ when x = get_iper p_relation ->
+      | { r_fath = None; r_moth = Some x; _ } :: _ when x = get_iper p_relation
+        ->
           list @ [ (p, true) ]
       | _ -> list
     else list
@@ -1094,7 +1096,7 @@ let get_persons_with_relations base m list =
         let p = poi base ip in
         match (get_rparents p, get_parents p) with
         | [], _ | _, Some _ -> list
-        | { r_fath = Some x } :: _, _ when x <> get_iper m.m_fath -> list
+        | { r_fath = Some x; _ } :: _, _ when x <> get_iper m.m_fath -> list
         | _ -> (p, false) :: list)
       (get_witnesses m.m_fam) list
   in
@@ -1539,7 +1541,8 @@ let rs_printf opts s =
   loop true 0
 
 let gwu opts isolated base in_dir out_dir src_oc_ht (per_sel, fam_sel) =
-  if out_dir <> "" && not (Sys.file_exists out_dir) then Mutil.mkdir_p out_dir;
+  if out_dir <> "" && not (Sys.file_exists out_dir) then
+    File.create_dir ~parent:true out_dir;
   let to_separate = separate base in
   let out_oc_first = ref true in
   let _ofile, oc, close = opts.oc in

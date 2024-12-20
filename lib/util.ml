@@ -798,6 +798,8 @@ let is_public conf base p =
      && nobtit conf base p <> []
   || is_old_person conf (gen_person_of_person p)
 
+let is_semi_public _conf _base p = get_access p = SemiPublic
+
 (* ********************************************************************** *)
 (* [Fonc] accessible_by_key :
             config -> base -> person -> string -> string -> bool *)
@@ -2018,6 +2020,15 @@ let find_person_in_env_aux conf base env_i env_p env_n env_occ =
       else None
   | _ -> (
       match (p_getenv conf.env env_p, p_getenv conf.env env_n) with
+      | None, Some n -> (
+          match Gutil.person_of_string_key base n with
+          | Some ip ->
+              let p = pget conf base ip in
+              if is_hidden p then None
+              else if (not (is_hide_names conf p)) || authorized_age conf base p
+              then Some p
+              else None
+          | None -> None)
       | Some p, Some n -> (
           let occ = Option.value ~default:0 (p_getint conf.env env_occ) in
           match person_of_key base p n occ with
@@ -2459,10 +2470,12 @@ let rec in_text case_sens s m =
     else if m.[i] = '[' && i + 1 < String.length m && m.[i + 1] = '[' then
       match NotesLinks.misc_notes_link m i with
       | NotesLinks.WLpage (j, _, _, _, text)
-      | NotesLinks.WLperson (j, _, text, _)
+      | NotesLinks.WLperson (j, _, Some text, _)
       | NotesLinks.WLwizard (j, _, text) ->
           if in_text case_sens s text then true else loop false j
-      | NotesLinks.WLnone -> loop false (i + 1)
+      | NotesLinks.WLperson (j, (fn, sn, _), None, _) ->
+          if in_text case_sens s (fn ^ " " ^ sn) then true else loop false j
+      | NotesLinks.WLnone (j, _) -> loop false j
     else
       match start_equiv_with case_sens s m i with
       | Some _ -> true

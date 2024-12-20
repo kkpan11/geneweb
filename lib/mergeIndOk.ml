@@ -439,10 +439,90 @@ let redirect_added_families base p ip2 p2_family =
     patch_couple base ifam cpl
   done
 
+let merge_carrousel conf base o_p1 o_p2 p =
+  (* move files of dir2 into dir1 *)
+  let rec move_files dir1 dir2 =
+    Array.iter
+      (fun entry ->
+        let full_path1 = Filename.concat dir1 entry in
+        let full_path2 = Filename.concat dir2 entry in
+        if (Unix.stat full_path2).st_kind = Unix.S_REG then
+          try
+            Sys.rename full_path2
+              (full_path1 ^ if full_path1 = full_path2 then "-copy" else "")
+          with e ->
+            Printf.eprintf "Error rename path2 (merge) %s\n"
+              (Printexc.to_string e)
+        else if
+          (Unix.stat full_path2).st_kind = Unix.S_DIR
+          && entry <> "." && entry <> ".."
+        then
+          if not (Sys.file_exists full_path1) then (
+            try Unix.mkdir full_path1 0o755
+            with e ->
+              Printf.eprintf "Error create save1 (merge) %s\n"
+                (Printexc.to_string e);
+              move_files full_path1 full_path2)
+          else ())
+      (Sys.readdir dir2)
+  in
+  let full_dir file = Filename.concat (!GWPARAM.images_d conf.bname) file in
+  let ofn = p.first_name in
+  let osn = p.surname in
+  let oocc = p.occ in
+  let ofn1 = sou base (get_first_name o_p1) in
+  let osn1 = sou base (get_surname o_p1) in
+  let oocc1 = get_occ o_p1 in
+  let ofn2 = sou base (get_first_name o_p2) in
+  let osn2 = sou base (get_surname o_p2) in
+  let oocc2 = get_occ o_p2 in
+  let dir0 = Printf.sprintf "%s.%d.%s" ofn oocc osn in
+  let dir1 = Printf.sprintf "%s.%d.%s" ofn1 oocc1 osn1 in
+  let dir2 = Printf.sprintf "%s.%d.%s" ofn2 oocc2 osn2 in
+  let dir0 = full_dir dir0 in
+  let dir1 = full_dir dir1 in
+  let dir2 = full_dir dir2 in
+  match (Sys.file_exists dir1, Sys.file_exists dir2) with
+  | true, true ->
+      if dir0 = dir1 then (
+        move_files dir0 dir2;
+        try Mutil.rm_rf dir2
+        with e ->
+          Printf.eprintf "Error delete dir2 (merge) %s\n" (Printexc.to_string e));
+      if dir0 = dir2 then (
+        move_files dir0 dir1;
+        try Mutil.rm_rf dir1
+        with e ->
+          Printf.eprintf "Error delete dir1 (merge) %s\n" (Printexc.to_string e))
+  | true, false -> (
+      if dir1 <> dir0 then
+        try Sys.rename dir1 dir0
+        with e ->
+          Printf.eprintf "Error rename dir1 (merge) %s\n" (Printexc.to_string e)
+      )
+  | false, true -> (
+      if dir2 <> dir0 then
+        try Sys.rename dir2 dir0
+        with e ->
+          Printf.eprintf "Error rename dir2 (merge) %s\n" (Printexc.to_string e)
+      )
+  | false, false -> ()
+
 let effective_mod_merge o_conf base o_p1 o_p2 sp print_mod_merge_ok =
   let conf = Update.update_conf o_conf in
   let p_family = get_family (poi base sp.key_index) in
   let p2_family = get_family (poi base o_p2.key_index) in
+  let db = Gwdb.read_nldb base in
+  let ofn1 = o_p1.first_name in
+  let osn1 = o_p1.surname in
+  let oocc1 = o_p1.occ in
+  let key1 = (Name.lower ofn1, Name.lower osn1, oocc1) in
+  let pgl1 = Notes.links_to_ind conf base db key1 None in
+  let ofn2 = o_p2.first_name in
+  let osn2 = o_p2.surname in
+  let oocc2 = o_p2.occ in
+  let key2 = (Name.lower ofn2, Name.lower osn2, oocc2) in
+  let pgl2 = Notes.links_to_ind conf base db key2 None in
   let warning _ = () in
   MergeInd.reparent_ind base warning sp.key_index o_p2.key_index;
   let p =
@@ -454,6 +534,12 @@ let effective_mod_merge o_conf base o_p1 o_p2 sp print_mod_merge_ok =
   redirect_added_families base p o_p2.key_index p2_family;
   UpdateIndOk.effective_del_no_commit base o_p2;
   patch_person base p.key_index p;
+  let new_key = (sou base p.first_name, sou base p.surname, p.occ) in
+  if
+    (not (String.equal ofn1 sp.first_name && String.equal osn1 sp.surname))
+    || oocc1 <> sp.occ
+  then Notes.update_ind_key conf base pgl1 key1 new_key;
+  Notes.update_ind_key conf base pgl2 key2 new_key;
   let u = { family = Array.append p_family p2_family } in
   if p2_family <> [||] then patch_union base p.key_index u;
   Consang.check_noloop_for_person_list base
@@ -471,17 +557,4 @@ let effective_mod_merge o_conf base o_p1 o_p2 sp print_mod_merge_ok =
   Notes.update_notes_links_db base (Def.NLDB.PgInd o_p2.key_index) "";
   (* TODO update_cache_linked_pages *)
   Update.delete_topological_sort conf base;
-  let db = Gwdb.read_nldb base in
-  let ofn1 = o_p1.first_name in
-  let osn1 = o_p1.surname in
-  let oocc1 = o_p1.occ in
-  let pgl1 =
-    Perso.links_to_ind conf base db (Name.lower ofn1, Name.lower osn1, oocc1)
-  in
-  let ofn2 = o_p2.first_name in
-  let osn2 = o_p2.surname in
-  let oocc2 = o_p2.occ in
-  let pgl2 =
-    Perso.links_to_ind conf base db (Name.lower ofn2, Name.lower osn2, oocc2)
-  in
   print_mod_merge_ok conf base wl p pgl1 ofn1 osn1 oocc1 pgl2 ofn2 osn2 oocc2
